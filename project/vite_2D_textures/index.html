@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>gravitylab</title>
+    <style>
+    html, body {
+       margin: 0;
+       height: 10;
+    }
+    #c {
+       width: 100%;
+       height: 100%;
+       display: block;
+    }
+
+    h1 {
+      font-size: 3.2em;
+      line-height: 1.1;
+      text-align: center;
+      color: #FF6905;
+    }
+    </style>
+  </head>
+
+    <body>
+
+      <script id="vertexshader" type="vertex">
+              uniform sampler2D u_displacement_texture;
+              
+              uniform float uv_r_min;
+              uniform float uv_r_max;
+              uniform float uv_ph_min;
+              uniform float uv_ph_max;
+              uniform float uv_l_min;
+              uniform float uv_l_max;
+              uniform float uv_p_min;
+              uniform float uv_p_max;
+
+              varying vec2 vUv;
+              varying float debug;
+              varying float camDotPos;
+
+              mat4 m_BH;
+
+              vec4 pos_world4;
+              vec4 pos4_lpn;
+              vec3 pos_world3;
+
+              vec4 l, p, n, _;
+              vec3 l3, p3, n3;
+
+              mat4 M_to_lpn, M_to_xyz;
+
+              float r_lookup, ph_lookup;
+              vec4 interpol;
+              float dL, dP;
+
+              void main() {
+
+                  pos_world4 = modelMatrix*vec4(position, 1.);
+                  pos_world3 = pos_world4.xyz;
+
+                  l3 = cameraPosition;
+                  n3 = cross(l3, pos_world3);
+                  p3 = cross(n3, l3);
+
+                  l = vec4(normalize(l3), 0);
+                  p = vec4(normalize(p3), 0);
+                  n = vec4(normalize(n3), 0);
+                  _ = vec4(0,0,0,1);
+
+                  // GLSL is column major!!!
+                  //M_to_lpn = transpose(mat4(l, p, n, _));
+                  //M_to_xyz = inverse(M_to_lpn);
+                  M_to_xyz = mat4(l, p, n, _); // Not sure here. This works visually, but I thought WebGL was column major...
+                  M_to_lpn = inverse(M_to_xyz);
+
+                  // Get LPN coordinates for the position
+                  pos4_lpn = M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+                  // Get the interpolated translation out of the texture
+                  // This must be done in lpn coordinates, to get r and ph in LPN space, that is how the grid is run
+                  r_lookup = (length(pos4_lpn.xyz)-uv_r_min)/(uv_r_max - uv_r_min);
+                  ph_lookup = (acos(pos4_lpn.x/length(pos4_lpn.xyz))-uv_ph_min)/(uv_ph_max-uv_ph_min);
+
+                  interpol = texture2D(u_displacement_texture, vec2(ph_lookup, 1.-r_lookup ));
+                  dL = uv_l_min + interpol.x * (uv_l_max - uv_l_min);
+                  dP = uv_p_min + interpol.y * (uv_p_max - uv_p_min);//-0.55 -0.03
+
+                  // This matrix will contain the BH effect
+                  m_BH[0] = vec4(1,0,0,0);
+                  m_BH[1] = vec4(0,1,0,0);
+                  m_BH[2] = vec4(0,0,1,0);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(dL, dP,0,1);
+
+                  vUv = uv;
+                  
+                  gl_Position = projectionMatrix * viewMatrix *  M_to_xyz* m_BH * M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+                  
+                  vec4 bh = projectionMatrix*modelViewMatrix * vec4(0.,0.,0., 1.0);
+                  
+
+                  debug = 0.;//dot(cameraPosition, (modelViewMatrix*vec4(position, 1)).xyz);
+                  camDotPos = dot(cameraPosition, (modelViewMatrix*vec4(position, 1)).xyz);
+                  camDotPos = dot(cameraPosition, (modelMatrix*vec4(position, 1)).xyz);
+
+              }
+          </script>
+
+          <script id="fragmentshader" type="fragment">
+              uniform sampler2D u_texture;
+              uniform sampler2D u_displacement_texture;
+              
+              uniform float u_width;
+              uniform float u_height;
+              uniform float u_shadowFactor;//0.39
+
+              varying vec2 vUv;
+              varying float debug;
+              varying float camDotPos;
+
+              void main() {
+                  vec2 screenCoords = vec2(u_height/u_width*(2.*gl_FragCoord.y/u_height - 1.0), 
+                                          2.*gl_FragCoord.x/u_width - 1.0);
+
+                  // Check for blocking area (shadow) for stretched polys
+                  if (length(screenCoords) < u_shadowFactor*u_height/u_width){ 
+                    // Only block when object is behind the black hole
+                    if (camDotPos < 0.){ discard; }
+                  }
+
+                  vec4 texture = texture2D(u_texture, vUv);
+                  gl_FragColor = vec4(texture.r, texture.g, texture.b, 1.0);
+              }
+          </script>
+
+          <script id="fragmentshader_im2" type="fragment">
+              uniform sampler2D u_texture;
+              uniform sampler2D u_displacement_texture;
+              
+              uniform float u_width;
+              uniform float u_height;
+              uniform float u_shadowFactor;//0.33
+
+              varying vec2 vUv;
+              varying float debug;
+              varying float camDotPos;
+
+              void main() {
+
+                  vec2 screenCoords = vec2(u_height/u_width*(2.*gl_FragCoord.y/u_height - 1.0), 
+                                      2.*gl_FragCoord.x/u_width - 1.0);
+
+                  // Check for blocking area (shadow) for stretched polys
+                  // For the second image you also block when it is in front (compared to the first
+                  // image)
+                  if (length(screenCoords) < u_shadowFactor*u_height/u_width){
+                     discard;
+                  }
+
+                  vec4 texture = texture2D(u_texture, vUv);
+                  gl_FragColor = vec4(texture.r, texture.g, texture.b, 1.0); //
+              }
+          </script>
+      <script type="module" src="src/main_proper_two_images.js"></script>
+      <h1>Real-time rendering in Black hole space-times</h1>
+
+    </body>

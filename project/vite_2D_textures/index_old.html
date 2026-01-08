@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>gravitylab</title>
+    <style>
+    html, body {
+       margin: 0;
+       height: 10;
+    }
+    #c {
+       width: 100%;
+       height: 100%;
+       display: block;
+    }
+    </style>
+  </head>
+
+    <body>
+
+     <!--  <script id="vertexshader_test" type="vertex">
+              //test
+              uniform float u_time;
+              uniform mat4 u_matrix;
+              uniform sampler2D u_displacement_texture;
+              
+              uniform float cam_distance;
+              uniform float uv_r_min;
+              uniform float uv_r_max;
+              uniform float uv_ph_min;
+              uniform float uv_ph_max;
+              uniform float uv_l_min;
+              uniform float uv_l_max;
+              uniform float uv_p_min;
+              uniform float uv_p_max;
+
+              varying vec2 vUv;
+
+              mat4 m_BH;
+
+              vec4 pos_world4;
+              vec4 pos4_lpn;
+              vec3 pos_world3;
+
+              vec4 l;
+              vec4 p;
+              vec4 n;
+              vec4 _;
+              vec3 l3;
+              vec3 p3;
+              vec3 n3;
+
+              mat4 M_to_lpn;
+              mat4 M_to_xyz;
+
+              vec4 t1, t2, t3, t4;
+              mat4 trans_test;
+
+              //float uv_r_min = 2.000001;
+              //float uv_r_max = 20.000001;
+              //float uv_ph_min = 1e-06;
+              //float uv_ph_max = 3.141591653589793;
+              //float uv_l_min = -1.2053964711009248;
+              //float uv_l_max = 15.128050302502533;
+              //float uv_p_min = -0.3746061203341622;
+              //float uv_p_max = 21.869479986932447;
+              float r_lookup, ph_lookup;
+              vec4 interpol;
+              float dL, dP;
+
+              float _dist;
+
+              varying vec4 debug;
+
+              void main() {
+
+                  pos_world4 = modelMatrix*vec4(position, 1.);
+                  pos_world3 = pos_world4.xyz;
+
+                  l3 = cameraPosition;
+                  //l3 = vec3(cam_distance,0,0);
+                  n3 = cross(l3, pos_world3);
+                  p3 = cross(n3, l3);
+                  p3 = cross(l3, n3); // Why did I need to interchange this??
+
+                  l = vec4(normalize(l3), 0);
+                  p = vec4(normalize(p3), 0);
+                  n = vec4(normalize(n3), 0);
+                  _ = vec4(0,0,0,1);
+
+                  // GLSL is column major!!!
+                  //M_to_lpn = transpose(mat4(l, p, n, _));
+                  //M_to_xyz = inverse(M_to_lpn);
+                  M_to_xyz = mat4(l, p, n, _);
+                  M_to_lpn = inverse(M_to_xyz);
+
+                  // Get LPN coordinates for the position
+                  pos4_lpn = M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+                  // Get the interpolated translation out of the texture
+                  // This must be done in lpn coordinates, to get r and ph in LPN space, that is how the grid is run
+                  r_lookup = (length(pos4_lpn.xyz)-uv_r_min)/(uv_r_max - uv_r_min);
+                  ph_lookup = (acos(pos4_lpn.x/length(pos4_lpn.xyz))-uv_ph_min)/(uv_ph_max-uv_ph_min);
+
+
+                  interpol = texture2D(u_displacement_texture, vec2(r_lookup, (1.-ph_lookup)) );
+                  dL = 1.* uv_l_min + interpol.y * (uv_l_max - uv_l_min);
+                  dP = 1.* uv_p_min + interpol.x * (uv_p_max - uv_p_min);
+
+                  // TES VERSION
+                  //_dist = 3.;
+                  //r_lookup = (_dist-uv_r_min)/(uv_r_max - uv_r_min);
+                  //ph_lookup = (acos(_dist/r_lookup)-uv_ph_min)/(uv_ph_max-uv_ph_min);
+                  //interpol = texture2D(u_displacement_texture, vec2(0.7,0.5));
+                  //r_lookup, ph_lookup) );
+                  //dL = uv_l_min + interpol.y * (uv_l_max - uv_l_min);
+                  //dP = uv_p_min + interpol.x * (uv_p_max - uv_p_min);
+                  dL = 0.;
+                  dP = 0.;
+                  
+
+                  // This matrix will contain the BH effect
+                  m_BH[0] = vec4(1,0,0,0);
+                  m_BH[1] = vec4(0,1,0,0);
+                  m_BH[2] = vec4(0,0,1,0);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(dL, dP,0,1);
+                  //m_BH[3] = vec4(0,50./pow(length(pos_world3),2.),0,1);
+                  //m_BH[3] = vec4(0,50./length(pos_world3),0,1);
+
+                  //r_lookup-(4.-2.4)/(10-2.4)
+                  debug = vec4(0,0,0,1.-8.*r_lookup); //r_lookup~8????
+                  //debug = vec4(ph_lookup,0,0,1);
+                  //debug = vec4(1.-r_lookup,0,0,1);
+                  //debug = vec4(pos4_lpn.x, pos4_lpn.y,0,1);
+                  debug = vec4(1,0,0,1);
+                  vUv = uv;
+
+                  //gl_Position = projectionMatrix * viewMatrix *  M_to_xyz* m_BH * M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+                  
+                  // Check if LPN conversion works
+                  // vec2(u, v): u is the second index (y or ph) of python array
+                  // vec2(u, v): v is the first index of python array (x or r)
+                  // The v axis is flipped. vec2( 0., (1.-0.2)) gives the value at 0.2. Thus v = (1.-r_normed)
+                  // Both u>1, u<0 and v>1, v<0 will just give u,v=0 or 1 responses. Texture is clamped
+                  // The output interpol.x and interpol.y ranges from 0 to 1
+
+                  // So we need 
+                  // u = ph_normed
+                  // v = 1. - r_normed
+
+                  interpol = texture2D(u_displacement_texture, vec2( -0.0+0., (1.-0.3)));
+
+                  gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position.x+interpol.x, position.y+interpol.y, position.z, 1.0);
+
+                  //gl_Position = projectionMatrix * viewMatrix *  modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+              }
+          </script> -->
+      <script id="vertexshader" type="vertex">
+              uniform float u_time;
+              uniform mat4 u_matrix;
+              uniform sampler2D u_displacement_texture;
+              
+              uniform float cam_distance;
+              uniform float uv_r_min;
+              uniform float uv_r_max;
+              uniform float uv_ph_min;
+              uniform float uv_ph_max;
+              uniform float uv_l_min;
+              uniform float uv_l_max;
+              uniform float uv_p_min;
+              uniform float uv_p_max;
+
+              varying vec2 vUv;
+
+              mat4 m_BH;
+
+              vec4 pos_world4;
+              vec4 pos4_lpn;
+              vec3 pos_world3;
+
+              vec4 l;
+              vec4 p;
+              vec4 n;
+              vec4 _;
+              vec3 l3;
+              vec3 p3;
+              vec3 n3;
+
+              mat4 M_to_lpn;
+              mat4 M_to_xyz;
+
+              vec4 t1, t2, t3, t4;
+              mat4 trans_test;
+
+              //float uv_r_min = 2.000001;
+              //float uv_r_max = 20.000001;
+              //float uv_ph_min = 1e-06;
+              //float uv_ph_max = 3.141591653589793;
+              //float uv_l_min = -1.2053964711009248;
+              //float uv_l_max = 15.128050302502533;
+              //float uv_p_min = -0.3746061203341622;
+              //float uv_p_max = 21.869479986932447;
+              float r_lookup, ph_lookup;
+              vec4 interpol;
+              float dL, dP;
+
+              float _dist;
+
+              varying vec4 debug;
+              varying float frag_dist_parameter;
+
+              vec4 tempVec4;
+              float tempFloat;
+              bvec2 temp2;
+              vec4 tempBHposCamCoords;
+              vec4 tempVertPosCamCoords;
+
+              void main() {
+
+                  pos_world4 = modelMatrix*vec4(position, 1.);
+                  pos_world3 = pos_world4.xyz;
+
+                  l3 = cameraPosition;
+                  //l3 = vec3(cam_distance,0,0);
+                  n3 = cross(l3, pos_world3);
+                  p3 = cross(n3, l3);
+                  //p3 = cross(l3, n3); // Why did I need to interchange this??
+
+                  l = vec4(normalize(l3), 0);
+                  p = vec4(normalize(p3), 0);
+                  n = vec4(normalize(n3), 0);
+                  _ = vec4(0,0,0,1);
+
+                  // GLSL is column major!!!
+                  //M_to_lpn = transpose(mat4(l, p, n, _));
+                  //M_to_xyz = inverse(M_to_lpn);
+                  M_to_xyz = mat4(l, p, n, _); // Not sure here. This works visually, but I thought WebGL was column major...
+                  M_to_lpn = inverse(M_to_xyz);
+
+                  // Get LPN coordinates for the position
+                  pos4_lpn = M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+                  // Get the interpolated translation out of the texture
+                  // This must be done in lpn coordinates, to get r and ph in LPN space, that is how the grid is run
+                  r_lookup = (length(pos4_lpn.xyz)-uv_r_min)/(uv_r_max - uv_r_min);
+                  ph_lookup = (acos(pos4_lpn.x/length(pos4_lpn.xyz))-uv_ph_min)/(uv_ph_max-uv_ph_min);
+
+                  interpol = texture2D(u_displacement_texture, vec2(ph_lookup, 1.-r_lookup ));
+                  dL = uv_l_min + interpol.x * (uv_l_max - uv_l_min);
+                  dP = uv_p_min + interpol.y * (uv_p_max - uv_p_min);//-0.55 -0.03
+
+                  //dP = uv_p_min + (interpol.y-0.0453) * (uv_p_max - uv_p_min);//-0.55 -0.03
+                  //-0.8 -0.039
+
+                  // TES VERSION
+                  //_dist = 3.;
+                  //r_lookup = (_dist-uv_r_min)/(uv_r_max - uv_r_min);
+                  //ph_lookup = (acos(_dist/r_lookup)-uv_ph_min)/(uv_ph_max-uv_ph_min);
+                  //interpol = texture2D(u_displacement_texture, vec2(0.7,0.5));
+                  //r_lookup, ph_lookup) );
+                  //dL = uv_l_min + interpol.x * (uv_l_max - uv_l_min);
+                  //dP = uv_p_min + interpol.y * (uv_p_max - uv_p_min);
+                  //dL = 0.;
+                  //dP = 0.;
+                  
+
+                  // This matrix will contain the BH effect
+                  m_BH[0] = vec4(1,0,0,0);
+                  m_BH[1] = vec4(0,1,0,0);
+                  m_BH[2] = vec4(0,0,1,0);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(0,0,0,1);
+                  m_BH[3] = vec4(dL, dP,0,1);
+
+                  //m_BH[3] = vec4(0,50./pow(length(pos_world3),2.),0,1);
+                  //m_BH[3] = vec4(0,50./length(pos_world3),0,1);
+
+                  //r_lookup-(4.-2.4)/(10-2.4)
+                  //debug = vec4(0,0,0,1.-8.*r_lookup); //r_lookup~8????
+                  //debug = vec4(ph_lookup,0,0,1);
+                  //debug = vec4(1.-r_lookup,0,0,1);
+                  //debug = vec4(pos4_lpn.x, pos4_lpn.y,0,1);
+                  //debug = vec4(1.-acos(pos4_lpn.x/length(pos4_lpn.xyz))/3.14,0,0,1);
+                  debug = vec4(1,0 ,0,1);
+
+                  vUv = uv;
+                  
+                  //gl_Position = projectionMatrix * viewMatrix *  m_BH * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+                  gl_Position = projectionMatrix * viewMatrix *  M_to_xyz* m_BH * M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+                  
+                  // Check if LPN conversion works
+                  //gl_Position = projectionMatrix * viewMatrix *  M_to_xyz* M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+                  //gl_Position = projectionMatrix * viewMatrix *  modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+
+
+
+                  tempBHposCamCoords = viewMatrix * vec4(0,0,0,1);
+                  tempVertPosCamCoords = viewMatrix * M_to_xyz* m_BH * M_to_lpn * modelMatrix * vec4(position.x, position.y, position.z, 1.0);
+                  tempFloat = 360.*acos(dot(tempBHposCamCoords, tempVertPosCamCoords)/length(tempBHposCamCoords)/length(tempVertPosCamCoords))/3.1415926538;
+
+                  frag_dist_parameter = tempVertPosCamCoords.y;//tempVertPosCamCoords);//.y;//tempFloat;
+
+              }
+          </script>
+
+          <script id="fragmentshader" type="fragment">
+              uniform sampler2D u_texture;
+              uniform sampler2D u_displacement_texture;
+              
+              varying float frag_dist_parameter;
+              varying vec2 vUv;
+              varying vec4 debug;
+              void main() {
+                  //discard;
+                  //if (frag_dist_parameter < 0.){
+                  //  gl_FragDepth = 1.0;
+                  //  discard;
+                  //};
+                  vec4 texture = texture2D(u_texture, vUv);
+                  //vec4 texture = texture2D(u_texture, vec2(10.5,10.5));
+
+                  gl_FragColor = vec4(texture.r, texture.g, texture.b, 1.0); //
+
+                  //gl_FragColor = vec4(texture.r-frag_dist_parameter, texture.g-frag_dist_parameter, texture.b-frag_dist_parameter, 1.0); //
+
+                  //gl_FragColor = debug;
+              }
+          </script>
+
+
+
+          <script id="vertexshaderRegions" type="vertex">
+            varying vec3 vUv; 
+            varying float dist;
+            void main() {
+              vUv = position; 
+
+              vec3 lineDir = normalize(- cameraPosition);
+              dist = 10.;//length(cross(modelViewMatrix*position - cameraPosition, lineDir));
+
+              vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0);
+              gl_Position = projectionMatrix * modelViewPosition; 
+            }
+          </script>
+          <script id="fragmentshaderRegions" type="fragment">
+              //uniform sampler2D u_texture;
+              //uniform sampler2D u_displacement_texture;
+              
+              //varying float frag_dist_parameter;
+              varying vec3 vUv;
+              varying float dist;
+              
+              
+              void main() {
+                  //discard;
+                  //if (dist < 10.){
+                  //  gl_FragDepth = 1.0;
+                  //  discard;
+                  //};
+                  //vec4 texture = texture2D(u_texture, vUv);
+                  //vec4 texture = texture2D(u_texture, vec2(10.5,10.5));
+                  //gl_FragDepth = 1.0;
+                  gl_FragColor = vec4(0.,dist, 0, 0.); //
+                  //gl_FragColor = vec4(texture.r, texture.g, texture.b, 0.5); //
+
+              }
+          </script>
+
+      <script type="module" src="src/main_multi_2.js"></script>
+
+    </body>
