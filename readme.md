@@ -1,6 +1,7 @@
 
 <h1 align="center">Gravity Lab </h1>
-<h3>Polygon rendering in the curved spacetimes of black holes!</h3>
+
+<h3 align="center">Polygon rendering in the curved spacetimes of black holes!</h3>
 
 <p align="center">
 Author: <a href="https://www.linkedin.com/in/bldevries/" target="_blank">BL de Vries</a>. PhD and Scientific visualisation advisor at <a href="https://www.surf.nl" target="_blank">SURF</a>.
